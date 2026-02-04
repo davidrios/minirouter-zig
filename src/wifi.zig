@@ -1,45 +1,46 @@
 const std = @import("std");
-const c = @cImport({
-    @cInclude("sys/socket.h");
-    @cInclude("sys/ioctl.h");
-    @cInclude("linux/wireless.h");
-    @cInclude("unistd.h");
-    @cInclude("string.h");
-});
+const posix = std.posix;
+
+const SIOCGIWESSID = 0x8B1B;
+const IFNAMSIZ = 16;
+
+const iw_point = extern struct {
+    pointer: ?*anyopaque,
+    length: u16,
+    flags: u16,
+};
+
+const iwreq = extern struct {
+    ifr_name: [IFNAMSIZ]u8,
+    u: extern union {
+        essid: iw_point,
+        data: [24]u8,
+    },
+};
 
 pub fn getSsid(allocator: std.mem.Allocator, interface_name: []const u8) !?[]const u8 {
-    // Open a socket to perform ioctl
-    const sock = c.socket(c.AF_INET, c.SOCK_DGRAM, 0);
-    if (sock < 0) return error.SocketCreateFailed;
-    defer _ = c.close(sock);
+    const sock = try posix.socket(posix.AF.INET, posix.SOCK.DGRAM, 0);
+    defer posix.close(sock);
 
-    var wrq: c.struct_iwreq = std.mem.zeroes(c.struct_iwreq);
-    
-    // Copy interface name to ifr_name
-    if (interface_name.len >= @sizeOf(@TypeOf(wrq.ifr_ifrn.ifrn_name))) return error.InterfaceNameTooLong;
-    @memcpy(wrq.ifr_ifrn.ifrn_name[0..interface_name.len], interface_name);
-    wrq.ifr_ifrn.ifrn_name[interface_name.len] = 0;
+    var wrq: iwreq = std.mem.zeroes(iwreq);
 
-    // Allocate buffer for SSID
-    var ssid_buf: [33]u8 = undefined; // Max SSID len is 32 + null
+    if (interface_name.len >= IFNAMSIZ) return error.InterfaceNameTooLong;
+    @memcpy(wrq.ifr_name[0..interface_name.len], interface_name);
+
+    var ssid_buf: [33]u8 = undefined;
     @memset(&ssid_buf, 0);
 
     wrq.u.essid.pointer = &ssid_buf;
     wrq.u.essid.length = ssid_buf.len;
     wrq.u.essid.flags = 0;
 
-    if (c.ioctl(sock, c.SIOCGIWESSID, &wrq) != 0) {
-        // Only return error if it's not just "not a wireless interface"
-        // But for generic usage, returning null is safer if it fails
-        return null; 
+    // ioctl returns raw syscall result (usize)
+    const rc = std.os.linux.ioctl(sock, SIOCGIWESSID, @intFromPtr(&wrq));
+    if (rc != 0) {
+        return null;
     }
 
-    if (wrq.u.essid.flags == 0) {
-        // SSID hidden or not associated?
-        // Sometimes it returns empty string
-    }
-    
-    // The length returned in wrq.u.essid.length might be useful
+    // Check if empty or hidden
     const len = wrq.u.essid.length;
     if (len == 0) return null;
 

@@ -8,8 +8,8 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .single_threaded = true,
     });
-    exe_mod.link_libc = true;
 
     const exe = b.addExecutable(.{
         .name = "minirouter-status",
@@ -37,7 +37,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    test_mod.link_libc = true;
 
     const unit_tests = b.addTest(.{
         .root_module = test_mod,

@@ -1,35 +1,41 @@
 const std = @import("std");
 
 pub fn getWanIp(allocator: std.mem.Allocator) ![]const u8 {
-    // Check if DNS is working first? The original script does.
-    // We can just try the request.
-    
-    var client = std.http.Client{ .allocator = allocator };
-    defer client.deinit();
+    const argv = [_][]const u8{ "curl", "-s", "--max-time", "5", "https://share.us.davidrios.dev/myip" };
 
-    // Use a small buffer for the IP response
-    // var buf: [1024]u8 = undefined; // Declared later
-    
-    const uri = try std.Uri.parse("https://share.us.davidrios.dev/myip");
+    var child = std.process.Child.init(&argv, allocator);
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Ignore;
 
-    var buf: [4096]u8 = undefined;
-    var writer = std.io.Writer.fixed(&buf);
+    try child.spawn();
 
-    const res = try client.fetch(.{
-        .location = .{ .uri = uri },
-        .response_writer = &writer,
-    });
+    var buf: [128]u8 = undefined;
+    const bytes_read = try child.stdout.?.readAll(&buf);
 
-    if (res.status != .ok) {
-        return error.HttpRequestFailed;
-    }
+    _ = try child.wait();
 
-    return try allocator.dupe(u8, std.io.Writer.buffered(&writer));
+    if (bytes_read == 0) return error.NoOutput;
+
+    // Trim newline
+    var ip = buf[0..bytes_read];
+    if (ip[ip.len - 1] == '\n') ip = ip[0 .. ip.len - 1];
+
+    return try allocator.dupe(u8, ip);
 }
 
 pub fn checkDns(allocator: std.mem.Allocator, hostname: []const u8) bool {
-    // Simple getaddrinfo check
-    const list = std.net.getAddressList(allocator, hostname, 0) catch return false;
-    defer list.deinit();
-    return list.addrs.len > 0;
+    const argv = [_][]const u8{ "getent", "hosts", hostname };
+
+    var child = std.process.Child.init(&argv, allocator);
+    child.stdout_behavior = .Ignore;
+    child.stderr_behavior = .Ignore;
+
+    child.spawn() catch return false;
+
+    const term = child.wait() catch return false;
+
+    return switch (term) {
+        .Exited => |code| code == 0,
+        else => false,
+    };
 }

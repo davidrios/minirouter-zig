@@ -2,6 +2,7 @@ const std = @import("std");
 const network = @import("network.zig");
 const wifi = @import("wifi.zig");
 const wan = @import("wan.zig");
+const config_mod = @import("config.zig");
 
 pub const Statuses = struct {
     interfaces: ?InterfacesStatus = null,
@@ -33,7 +34,7 @@ pub const InterfacesStatus = struct {
     }
 };
 
-pub fn gather(allocator: std.mem.Allocator) !Statuses {
+pub fn gather(allocator: std.mem.Allocator, config: config_mod.Config) !Statuses {
     var statuses = Statuses{};
 
     // 1. Interfaces
@@ -54,6 +55,10 @@ pub fn gather(allocator: std.mem.Allocator) !Statuses {
     }
 
     for (if_list.items) |*item| {
+        if (!config.isInterfaceAllowed(item.name)) {
+            continue;
+        }
+
         // Check for WiFi SSID if it's a wireless interface
         // We can try calling getSsid on everything, or check name conventions (wl*, wlan*)
         if (std.mem.startsWith(u8, item.name, "wl") or std.mem.startsWith(u8, item.name, "wlan")) {

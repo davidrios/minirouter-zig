@@ -29,7 +29,7 @@ pub fn loadConfig(allocator: std.mem.Allocator, path: []const u8) !std.json.Pars
     defer file.close();
 
     const size = (try file.stat()).size;
-    const buffer = try allocator.alloc(u8, size);
+    const buffer = try allocator.alloc(u8, @intCast(size));
     defer allocator.free(buffer);
 
     _ = try file.readAll(buffer);

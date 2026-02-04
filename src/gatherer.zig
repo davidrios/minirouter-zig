@@ -71,6 +71,13 @@ pub fn gather(allocator: std.mem.Allocator, config: config_mod.Config) !Statuses
             } else |_| {
                 item.ssid = null;
             }
+
+            // Try to get Signal Strength
+            if (wifi.getSignalStrength(item.name)) |strength| {
+                item.strength = strength;
+            } else |_| {
+                item.strength = null;
+            }
         }
 
         try interfaces.devices.put(item.name, item.*);

@@ -1,7 +1,13 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
+    const target = b.standardTargetOptions(.{
+        .default_target = .{
+            .cpu_arch = .arm,
+            .os_tag = .linux,
+            .abi = .musleabi,
+        },
+    });
     const optimize = b.standardOptimizeOption(.{});
 
     const exe_mod = b.createModule(.{
@@ -9,7 +15,14 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    exe_mod.link_libc = false; // We are building for musl, often static?
+    // Wait, musl usually requires libc? default is link_libc=true for Zig usually implies dynamic?
+    // For musl validation, usually Zig bundles musl. `link_libc = true` is correct if we want Zig's libc (musl).
+    // Let's stick to link_libc = true which enables the C ABI/startup.
     exe_mod.link_libc = true;
+
+    // Optimization: Single threaded
+    exe_mod.single_threaded = true;
 
     const exe = b.addExecutable(.{
         .name = "minirouter-status",

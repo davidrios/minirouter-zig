@@ -1,34 +1,33 @@
 const std = @import("std");
 
 pub fn getWanIp(allocator: std.mem.Allocator) ![]const u8 {
-    // Check if DNS is working first? The original script does.
-    // We can just try the request.
-    
-    var client = std.http.Client{ .allocator = allocator };
-    defer client.deinit();
+    // Shell out to wget to avoid linking TLS/HTTP
+    const argv = &[_][]const u8{ "wget", "-qO-", "https://share.us.davidrios.dev/myip" };
+    // const argv = &[_][]const u8{ "curl", "-s", "https://share.us.davidrios.dev/myip" };
 
-    // Use a small buffer for the IP response
-    // var buf: [1024]u8 = undefined; // Declared later
-    
-    const uri = try std.Uri.parse("https://share.us.davidrios.dev/myip");
+    var child = std.process.Child.init(argv, allocator);
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Ignore; // Ignore stderr
 
-    var buf: [4096]u8 = undefined;
-    var writer = std.io.Writer.fixed(&buf);
+    try child.spawn();
 
-    const res = try client.fetch(.{
-        .location = .{ .uri = uri },
-        .response_writer = &writer,
-    });
+    var buf: [1024]u8 = undefined;
+    const bytes_read = try child.stdout.?.readAll(&buf);
 
-    if (res.status != .ok) {
-        return error.HttpRequestFailed;
+    const term = try child.wait();
+    if (term != .Exited or term.Exited != 0) {
+        return error.WgetFailed;
     }
 
-    return try allocator.dupe(u8, std.io.Writer.buffered(&writer));
+    if (bytes_read == 0) return error.EmptyResponse;
+
+    // Trim whitespace
+    const trimmed = std.mem.trim(u8, buf[0..bytes_read], " \n\r\t");
+    return try allocator.dupe(u8, trimmed);
 }
 
 pub fn checkDns(allocator: std.mem.Allocator, hostname: []const u8) bool {
-    // Simple getaddrinfo check
+    // Standard libc getaddrinfo check is small enough and reliable
     const list = std.net.getAddressList(allocator, hostname, 0) catch return false;
     defer list.deinit();
     return list.addrs.len > 0;

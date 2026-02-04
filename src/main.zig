@@ -1,6 +1,14 @@
 const std = @import("std");
 const gatherer = @import("gatherer.zig");
 const network = @import("network.zig"); // For enums if needed in main
+const builtin = @import("builtin");
+
+pub const panic = if (builtin.mode == .ReleaseSmall) panicImmediate else std.builtin.default_panic;
+
+fn panicImmediate(msg: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
+    _ = msg;
+    std.process.exit(1);
+}
 
 pub fn main() !void {
     var raw_allocator = std.heap.GeneralPurposeAllocator(.{}){};
